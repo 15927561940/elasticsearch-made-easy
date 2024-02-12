@@ -109,7 +109,7 @@ POST my_index_0601/_search
 }
 ```
 
-## 6.7 Ngram自定义分词案例
+## 6.7 Ngram自定义分词案例（高亮）
 
 ### 6.7.2 问题定义
 ```
@@ -127,12 +127,18 @@ PUT my_index_0602
     }
   }
 }
+
+
+
 ####批量写入数据
 POST my_index_0602/_bulk
 {"index":{"_id":1}}
 {"acode":"160213.OF","aname":"X泰纳斯达克100"}
 {"index":{"_id":2}}
 {"acode":"160218.OF","aname":"X泰国证房地产"}
+
+
+
 
 ####执行模糊检索和高亮
 POST my_index_0602/_search
@@ -155,6 +161,8 @@ POST my_index_0602/_search
   }
 }
 ```
+发现上面的并不能解决问题
+
 ### 6.7.5 Ngram实践
 ```
 ####创建ngram分词索引
@@ -174,7 +182,7 @@ PUT my_index_0603
           "min_gram": 4,
           "max_gram": 10,
           "token_chars": [
-            "letter",
+            "letter",  //默认全部类型，代表保留数字、字母
             "digit"
           ]
         }
@@ -198,6 +206,9 @@ PUT my_index_0603
     }
   }
 }
+
+
+
 ####批量写入数据
 POST my_index_0603/_bulk
 {"index":{"_id":1}}
@@ -206,6 +217,8 @@ POST my_index_0603/_bulk
 {"acode":"160218.OF","aname":"X泰国证房地产"}
 ```
 
+借助analyzerAPI查看分词结果
+
 ```
 POST my_index_0603/_analyze
 {
@@ -213,6 +226,8 @@ POST my_index_0603/_analyze
   "text":"160213.OF"
 }
 ```
+
+看看是否能精确高亮查询特定字符高亮
 
 ```
 POST my_index_0603/_search
@@ -238,4 +253,24 @@ POST my_index_0603/_search
 }
 ```
 
+结果，实现只有1602高亮
+
+```
+        "highlight": {
+          "acode": [
+            "<em>1602</em>13.OF"
+          ]
+        }
+      },
+```
+
+本质是以空间换时间
+
+## 6.8总结
+
+本质是以空间换时间
+
+1.数据量少且不要求高亮，可以考虑keyword
+
+2.数据量大且要求高亮的用Ngram，结合match或者match_phrase实现，不建议用wildcard
 

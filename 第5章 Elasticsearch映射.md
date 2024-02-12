@@ -33,13 +33,15 @@ PUT my_index_0501/_doc/1
 }
 ```
 
+es中，允许用户对单个文档设置多个不同的数据类型，以满足不同的查询需求
+
 ```
 #### 多字段类型Multi_fields
 PUT my_index_0502
 {
   "mappings": {
     "properties": {
-      "cont": {
+      "cont": {    //类型名字为cont，properties下面接的是名字
         "type": "text",
         "analyzer": "english",
         "fields": {
@@ -63,7 +65,7 @@ PUT my_index_0503
 {
   "mappings": {
     "properties": {
-      "title": {
+      "title": {   //类型名字为cont，properties下面接的是名字
         "type": "text",
         "analyzer": "ik_max_word",
         "fields": {
@@ -78,12 +80,25 @@ PUT my_index_0503
 ```
 
 ### 5.1.4 映射类型
+
+#### 动态映射
+
+es中是动态映射，这和mysql不一样的
+
+动态映射的核心是在自动检测字段类型后添加新字段
+
+哪些字段支持动态监测   bool,float,long.Object,Array,date,string,除此之外的其他的都不支持
+
 ```
 #### 创建索引
 PUT my_index_0504/_bulk
 {"index":{"_id":1}}
 {"cont":"Each document has metadata associated with it","visit_count":35,"publish_time":"2023-05-20T18:00:00"}
 ```
+
+动态匹配的弊端是可能会出现字段类型不匹配
+
+比如把日期应该是date类型，却写成了keyword类型
 
 ```
 #### 字段匹配不正确
@@ -94,6 +109,10 @@ PUT my_index_0505/_doc/1
 }
 GET my_index_0505/_mapping
 ```
+
+结局动态映射可能出现的问题
+
+方法是先提前设置匹配规则
 
 ```
 #### 提前设置匹配规则
@@ -111,12 +130,14 @@ PUT my_index_0505/_doc/1
 GET my_index_0505/_mapping
 ```
 
+#### 静态映射
+
 ```
 #### 创建索引，指定dynamic:false
 PUT my_index_0506
 {
   "mappings": {
-    "dynamic": false,
+    "dynamic": false,   //动态映射设置为false则是静态映射
     "properties": {
       "user": {
         "properties": {
@@ -159,6 +180,12 @@ GET my_index_0506/_doc/1
 GET my_index_0506/_mapping
 ```
 
+
+
+
+
+设置为strict后，是不允许写入未定义过的字段
+
 ```
 #### dynamic设置为strict
 DELETE my_index_0507
@@ -182,7 +209,7 @@ PUT my_index_0507
   }
 }
 
-#### 数据写入失败
+#### 数据写入失败，设置为strict后，是不允许写入未定义过的字段
 PUT my_index_0507/_doc/1
 {
   "cont": "Each document has metadata associated"
@@ -190,6 +217,11 @@ PUT my_index_0507/_doc/1
 ```
 
 ### 5.1.5 实战：Mapping创建后还可以更新吗
+
+大多数只能reindex或者删除
+
+小部分字段可以更新
+
 ```
 PUT my_index_0508
 {
@@ -238,9 +270,19 @@ PUT my_index_0508/_mapping
 }
 ```
 
+
+
+
+
 ## 5.2 Nested类型及应用
 
 ### 5.2.1 Nested类型定义
+
+嵌套数据类型
+
+相关的可以写在同一个文档中，比如文章和评论
+
+简单来说，nested是升级版的object类型，它允许对象以彼此独立的方式进行索引
 
 ```
 #### 数据构造
@@ -248,6 +290,8 @@ PUT my_index_0509/_bulk
 {"index":{"_id":1}}
 {"title":"Invest Money","body":"Please start investing money as soon...","tags":["money","invest"],"published_on":"18 Oct 2017","comments":[{"name":"William","age":34,"rating":8,"comment":"Nice article..","commented_on":"30 Nov 2017"},{"name":"John","age":38,"rating":9,"comment":"I started investing after reading this.","commented_on":"25 Nov 2017"},{"name":"Smith","age":33,"rating":7,"comment":"Very good post","commented_on":"20 Nov 2017"}]}
 ```
+
+可以看到john的年纪是38，我们检索34岁的john试试
 
 ```
 #### 执行检索
@@ -271,6 +315,14 @@ POST my_index_0509/_search
   }
 }
 ```
+
+竟然也有数据，这是为甚麽呢？
+
+这是因为mapping的默认类型是object类型，会丢失关系
+
+
+
+修改comments的类型为nested（嵌套类型）试试
 
 ```
 PUT my_index_0510
@@ -314,6 +366,16 @@ PUT my_index_0510
 }
 ```
 
+导入构造的数据
+
+```
+PUT my_index_0510/_bulk
+{"index":{"_id":1}}
+{"title":"Invest Money","body":"Please start investing money as soon...","tags":["money","invest"],"published_on":"18 Oct 2017","comments":[{"name":"William","age":34,"rating":8,"comment":"Nice article..","commented_on":"30 Nov 2017"},{"name":"John","age":38,"rating":9,"comment":"I started investing after reading this.","commented_on":"25 Nov 2017"},{"name":"Smith","age":33,"rating":7,"comment":"Very good post","commented_on":"20 Nov 2017"}]}
+```
+
+这时候执行检索，由于数嵌套，会查不到不存在的数据
+
 ```
 #### 执行检索，不会召回结果。
 POST my_index_0510/_search
@@ -348,7 +410,15 @@ POST my_index_0510/_search
 }
 ```
 
-### 5.2.2  Nested类型的操作
+改成正确的38岁的时候，可以正常查询到数据，这就是nested（嵌套类型）的作用
+
+
+
+每个评论都在内部存储为单独的隐藏文档
+
+
+
+### 5.2.2  Nested类型的操作（增删改查）
 
 ```
 #### Nested 增
@@ -429,7 +499,7 @@ POST my_index_0510/_search
 ```
 
 ```
-#### 聚合
+#### 聚合，查找最小年龄的评论者的年纪
 POST my_index_0510/_search
 {
   "size": 0,
@@ -450,7 +520,11 @@ POST my_index_0510/_search
 }
 ```
 
-## 5.3 Join类型及应用
+在处理业务索引时，使用嵌套对象对于数据的组织和查询非常重要，我们在查询前确认，数据是否为嵌套类型为nested，否则可能范围无效的结果，影响判断
+
+
+
+## 5.3 Join类型及应用（类似mysql的多表关联，不推荐使用）
 
 ### 5.3.3 Join类型实战
 
@@ -463,7 +537,7 @@ PUT my_index_0511
       "my_join_field": {
         "type": "join",
         "relations": {
-          "question": [
+          "question": [ //父子结构，question是父
             "answer"
           ]
         }
@@ -490,12 +564,12 @@ POST my_index_0511/_doc/2
 
 ```
 #### 写入子文档
-PUT my_index_0511/_doc/3?routing=1&refresh 
+PUT my_index_0511/_doc/3?routing=1&refresh      //路由值是强制的，父文件和子文件必须在相同的分片上建立索引
 {
   "text": "This is an answer",
   "my_join_field": {
     "name": "answer",
-    "parent": "1"
+    "parent": "1"   //指定与父文档的id为1
   }
 }
 
@@ -658,7 +732,15 @@ PUT my_index_0514
 }
 ```
 
-## 5.4 Flattened类型及应用
+## 5.4 Flattened类型及应用（解决字段膨胀问题）
+
+将dynamic设置为false或者strict不是普适的解决方案
+
+true过于松散，strict过于严格，false也不太行
+
+
+
+flattened类型的作用是将整个json对象及其nestes字段索引为单个关键字（keyword类型），以减少字段总数
 
 ### 5.4.1 Elasticsarch字段膨胀问题
 
@@ -696,7 +778,7 @@ PUT my_index_0515/_doc/1
 }
 ```
 
-### 5.4.3 Flattened类型解决的根本问题
+### 5.4.3 Flattened类型解决的根本问题（设置上限）
 ```
 PUT my_index_0516
 {
@@ -713,13 +795,15 @@ PUT my_index_0517
 {
   "mappings": {
     "properties": {
-      "host": {
+      "host": {   //将host字段设置为flattened
         "type": "flattened"
       }
     }
   }
 }
 ```
+
+基于flattened插入数据
 
 ```
 #### 写入数据
@@ -734,8 +818,8 @@ PUT my_index_0517/_doc/1
     "pid": 3383
   },
   "@timestamp": "2025-03-09T18:00:54.000+05:30",
-  "host": {
-    "hostname": "bionic",
+  "host": {   //hots字段已经被设置成了"flattened"
+    "hostname": "bionic",  
     "name": "bionic"
   }
 }
@@ -752,7 +836,16 @@ POST my_index_0517/_update/1
     }
   }
 }
+
+#更新后查看映射结构，会发现没有字段扩增也不会出现mapping爆炸
+GET my_index_0517
+
+        "host": {
+          "type": "flattened"
+        },
 ```
+
+下面两种都会召回数据
 
 ```
 #### 精准匹配term检索
@@ -775,6 +868,12 @@ POST my_index_0617/_search
 }
 ```
 
+
+
+下面区分大小写
+
+下面这个不会返回数据，原因是es未对该字段进行分词，会区分大小写
+
 ```
 #### match全文类型检索
 POST my_index_0517/_search
@@ -796,9 +895,39 @@ POST my_index_0517/_search
 }
 ```
 
+### 5.4.5flattened的几个缺陷
+
+1.无法涉及运算
+
+2.不支持高亮
+
+3.
+
+
+
 ## 5.6 内部数据结构解读
 
+### 5.6.1倒排索引的特点
+
+在索引时创建，
+
+序列化到磁盘，
+
+全文搜索快，
+
+不适合做排序，
+
+默认开启
+
+
+
+
+
+
+
 ### 5.6.3 doc_values正排索引
+
+需要做排序的时候用正排索引，text字段不支持正排索引，但是可以用fielddata解决
 
 ```
 PUT my_index_0618
@@ -816,6 +945,12 @@ PUT my_index_0618
 
 ### 5.6.4 fielddata
 
+（默认禁用，因为很昂贵）
+
+text字段不支持正排索引，但是可以用fielddata解决
+
+只在text字段支持
+
 ```
 PUT my_index_0619
 {
@@ -824,16 +959,21 @@ PUT my_index_0619
       "body":{
         "type":"text",
         "analyzer": "standard",
-        "fielddata": true
+        "fielddata": true   //指定
       }
     }
   }
 }
-POST my_index_0619/_bulk
+
+
+
+POST my_index_0619/_bulk   //批量写入数据
 {"index":{"_id":1}}
 {"body":"The quick brown fox jumped over the lazy dog"}
 {"index":{"_id":2}}
 {"body":"Quick brown foxes leap over lazy dogs in summer"}
+
+
 
 GET my_index_0619/_search
 {
@@ -923,6 +1063,8 @@ PUT  my_index_0622
     }
   }
 }
+
+
 #### 批量写入数据
 PUT  my_index_0622/_bulk
 {"index":{"_id":1}}
